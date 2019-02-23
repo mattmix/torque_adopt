@@ -1,0 +1,10 @@
+[Unit]
+Description=Torque Adopt Socket
+
+[Socket]
+ListenStream=411
+Accept=yes
+
+[Install]
+WantedBy=sockets.target
+

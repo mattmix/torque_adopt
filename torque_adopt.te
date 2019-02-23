@@ -1,0 +1,16 @@
+
+module torque_adopt 1.1;
+
+require {
+        type reserved_port_t;
+        type tmpfs_t;
+	type sshd_t;
+	class capability sys_ptrace;
+        class tcp_socket name_connect;
+        class lnk_file read;
+}
+
+#============= sshd_t ==============
+allow sshd_t self:capability sys_ptrace;
+allow sshd_t reserved_port_t:tcp_socket name_connect;
+allow sshd_t tmpfs_t:lnk_file read;

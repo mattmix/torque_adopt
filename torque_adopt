@@ -1,0 +1,102 @@
+#!/bin/python36
+
+import os
+import sys
+import time
+import signal
+import socket
+import psutil
+import xml.etree.ElementTree as ElementTree
+from functools import reduce
+from syslog import openlog, syslog, LOG_AUTHPRIV
+
+STATE = ""
+JOBS_PATH = '/var/spool/torque/mom_priv/jobs/'
+
+def timeout(*args):
+  syslog(f"Timed out while {STATE}.")
+  sys.exit(0)
+
+def place_pid(pid, cgroup):
+  global STATE
+
+  syslog(f"Placing pid {pid} in cgroup {cgroup}")
+  STATE = f"placing in cgroup {cgroup}"
+
+  for subsys in ['memory', 'cpuset', 'devices', 'cpuacct']:
+    with open(f"/sys/fs/cgroup/{subsys}{cgroup}/tasks", 'a') as f:
+      f.write(f"{pid}\n")
+
+def scan_jobs(user):
+  jobs = {}
+  for file in os.listdir(JOBS_PATH):
+    if not file.endswith("JB"):
+      continue
+
+    root = ElementTree.parse(os.path.join(JOBS_PATH, file)).getroot()
+    jobid = root.find("./jobid").text
+    euser = root.find("./attributes/euser").text
+    start = root.find("./attributes/start_time").text
+    if user == euser:
+      jobs[jobid] = int(start)
+  return jobs
+
+try:
+  openlog('torque_adopt', facility=LOG_AUTHPRIV)
+  signal.signal(signal.SIGALRM, timeout)
+  signal.alarm(5)
+
+  parent = psutil.Process(os.getppid())
+
+  # reopen syslog with the proper sshd prefix
+  # keep the above open for exception logging of things that happen before we get the parent pid
+  openlog(f"sshd[{parent.pid}]: torque_adopt", facility=LOG_AUTHPRIV)
+
+  user = os.environ['PAM_USER']
+
+  if user == "root":
+    sys.exit(0)  
+  if os.environ['PAM_SERVICE'] != "sshd":
+    sys.exit(0)
+  if os.environ['PAM_TYPE'] != "open_session":
+    sys.exit(0)
+ 
+
+  # Our parent is a root sshd forked to just handle this session
+  # It _should_ only have one connection, the one for this session
+  STATE = "finding connection"
+  connection = parent.connections()[0] 
+  local_ip, local_port    = connection.laddr
+  remote_ip, remote_port = connection.raddr
+  local  = f"{local_ip}:{local_port}"
+  remote = f"{remote_ip}:{remote_port}"
+
+  s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+  STATE = f"connecting to {remote_ip}:411"
+  s.connect( (remote_ip, 411) )
+  
+  STATE = f"matching connections"
+  for line in s.makefile().readlines():
+    r_local, r_remote, r_user, r_cgroup = line.split()
+    if user == r_user and r_remote == local and r_local == remote:
+      if r_cgroup.startswith("/torque"):
+        syslog(f"Found matching remote torque cgroup: {r_cgroup}")
+        place_pid(parent.pid, r_cgroup)
+        sys.exit(0)
+
+
+  STATE = f"trying most recent placement"
+  syslog('Unable to match remote cgroup, trying most recent job placement..')
+
+  # jobs is a map of { "<jobid>": <start time> } for user
+  jobs = scan_jobs(user)
+  # reduce the jobs list to the job that most recently started
+  job = reduce(lambda x, y: x if jobs[x] > jobs [y] else y, jobs)
+  if job:
+    place_pid(parent.pid, f"/torque/{job}")
+  else:
+    syslog('Unable to find a torque cgroup, will place in root!')
+    place_pid(parent.pid, "/")
+
+except Exception as e:
+  syslog(str(e))

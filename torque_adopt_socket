@@ -1,0 +1,23 @@
+#!/bin/python36 -u
+
+import sys
+import socket
+import psutil
+
+
+def get_cgroup(pid):
+  with open(f"/proc/{pid}/cgroup", 'r') as f:  
+    for line in f.readlines():
+      if 'memory' in line:
+        return line.split(':')[2].strip()
+try:
+  for proc in psutil.process_iter():
+    for c in proc.connections('tcp'):
+      if c.status == 'ESTABLISHED' and c.raddr[1] == 22:
+        print(f"{c.laddr[0]}:{c.laddr[1]} {c.raddr[0]}:{c.raddr[1]} {proc.username()} {get_cgroup(proc.pid)}")
+
+#  s = socket.fromfd(sys.stdout.fileno(), socket.AF_INET, socket.SOCK_STREAM)
+#  s.shutdown(socket.SHUT_RDWR)
+#  s.close()
+except Exception as e:
+  print(e, file=sys.stderr)

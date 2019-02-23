@@ -1,0 +1,13 @@
+[Unit]
+Description=Torque Adopt Service
+Requires=torque_adopt.socket
+
+[Service]
+ExecStart=/usr/sbin/torque_adopt_socket
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+User=root
+
+[Install]
+WantedBy=multi-user.target
