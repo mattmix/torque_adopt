@@ -71,9 +71,15 @@ try:
   local  = f"{local_ip}:{local_port}"
   remote = f"{remote_ip}:{remote_port}"
 
-  s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-  STATE = f"connecting to {remote_ip}:411"
-  s.connect( (remote_ip, 411) )
+  try:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    STATE = f"connecting to {remote_ip}:411"
+    s.connect( (remote_ip, 411) )
+  except:
+    syslog(f"No remote torque_adopt, placing in root.")
+    place_pid(parent.pid, "/")
+    sys.exit(0)
+
   
   STATE = f"matching connections"
   for line in s.makefile().readlines():
@@ -95,8 +101,11 @@ try:
   if job:
     place_pid(parent.pid, f"/torque/{job}")
   else:
-    syslog('Unable to find a torque cgroup, will place in root!')
-    place_pid(parent.pid, "/")
+    syslog('Unable to find a torque cgroup, will place in root.')
+    place_pid(parent.pid, '/')
 
 except Exception as e:
-  syslog(str(e))
+  syslog(f"Exception: {str(e)}")
+  if parent:
+    syslog('An exception occured, placing in root.')
+    place_pid(parent.pid, '/')
