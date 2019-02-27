@@ -10,7 +10,6 @@ BuildArch:      noarch
 BuildRoot:      %{_builddir}/%{name}-root
 
 Requires:       python36
-Requires:       python36-psutil
 Requires:       pam_script
 
 

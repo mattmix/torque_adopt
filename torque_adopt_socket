@@ -1,4 +1,4 @@
-#!/bin/python36 -u
+#!/usr/bin/python36 -u
 
 import sys
 import socket
