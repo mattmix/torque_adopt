@@ -60,6 +60,16 @@ def match_remote_cgroup(host, local, remote):
         place_pid(parent.pid, r_cgroup)
         sys.exit(0)
 
+def place_in_recent_job(user):
+  # jobs is a map of { "<jobid>": <start time> } for user
+  jobs = scan_jobs(user)
+  if jobs:
+    # reduce the jobs list to the job that most recently started
+    job = reduce(lambda x, y: x if jobs[x] > jobs [y] else y, jobs)
+    if job:
+      place_pid(parent.pid, f"/torque/{job}")
+      sys.exit(0)
+
 try:
   openlog('torque_adopt', facility=LOG_AUTHPRIV)
   signal.signal(signal.SIGALRM, timeout)
@@ -92,16 +102,16 @@ try:
   try:
     match_remote_cgroup(remote_ip, local, remote)
   except:
-    syslog("Failed to match remote cgroup..")
-
-  # jobs is a map of { "<jobid>": <start time> } for user
-  jobs = scan_jobs(user)
-  if jobs:
-    # reduce the jobs list to the job that most recently started
-    job = reduce(lambda x, y: x if jobs[x] > jobs [y] else y, jobs)
-    if job:
-      place_pid(parent.pid, f"/torque/{job}")
-      sys.exit(0)
+    pass
+  
+  syslog("Failed to match remote cgroup..")
+    
+  try:
+    place_in_recent_job(user)
+  except:
+    pass
+  
+  syslog("Failed to place in user's most recent job..")
   
   syslog('Unable to find a torque cgroup, will place in root!')
   place_pid(parent.pid, "/")
