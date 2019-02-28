@@ -6,22 +6,19 @@ import time
 import signal
 import socket
 import psutil
+import pymunge
 import xml.etree.ElementTree as ElementTree
 from functools import reduce
 from syslog import openlog, syslog, LOG_AUTHPRIV
 
-STATE = ""
 JOBS_PATH = '/var/spool/torque/mom_priv/jobs/'
 
 def timeout(*args):
-  syslog(f"Timed out while {STATE}.")
+  syslog(f"Timed out.")
   sys.exit(0)
 
 def place_pid(pid, cgroup):
-  global STATE
-
   syslog(f"Placing pid {pid} in cgroup {cgroup}")
-  STATE = f"placing in cgroup {cgroup}"
 
   for subsys in ['memory', 'cpuset', 'devices', 'cpuacct']:
     with open(f"/sys/fs/cgroup/{subsys}{cgroup}/tasks", 'a') as f:
@@ -40,6 +37,29 @@ def scan_jobs(user):
     if user == euser:
       jobs[jobid] = int(start)
   return jobs
+
+def match_remote_cgroup(host):
+  try:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect( (host, 411) )
+  except:
+    syslog("Failed to connect to remote torque_adopt..")
+    return
+
+  try:
+    payload, uid, _, _ = pymunge.decode(s.recv(65536))
+  except:
+    syslog("Failed to decrypt remote torque_adopt payload..")
+    return
+
+  for line in payload.decode('utf-8').splitlines():
+    print(line)
+    r_local, r_remote, r_user, r_cgroup = line.split()
+    if user == r_user and r_remote == local and r_local == remote:
+      if r_cgroup.startswith("/torque"):
+        syslog(f"Found matching remote torque cgroup: {r_cgroup}")
+        place_pid(parent.pid, r_cgroup)
+        sys.exit(0)
 
 try:
   openlog('torque_adopt', facility=LOG_AUTHPRIV)
@@ -64,48 +84,34 @@ try:
 
   # Our parent is a root sshd forked to just handle this session
   # It _should_ only have one connection, the one for this session
-  STATE = "finding connection"
   connection = parent.connections()[0] 
   local_ip, local_port    = connection.laddr
   remote_ip, remote_port = connection.raddr
   local  = f"{local_ip}:{local_port}"
   remote = f"{remote_ip}:{remote_port}"
 
+
   try:
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    STATE = f"connecting to {remote_ip}:411"
-    s.connect( (remote_ip, 411) )
+    match_remote_cgroup(remote_ip)
   except:
-    syslog(f"No remote torque_adopt, placing in root.")
-    place_pid(parent.pid, "/")
-    sys.exit(0)
+    pass
 
-  
-  STATE = f"matching connections"
-  for line in s.makefile().readlines():
-    r_local, r_remote, r_user, r_cgroup = line.split()
-    if user == r_user and r_remote == local and r_local == remote:
-      if r_cgroup.startswith("/torque"):
-        syslog(f"Found matching remote torque cgroup: {r_cgroup}")
-        place_pid(parent.pid, r_cgroup)
-        sys.exit(0)
-
-
-  STATE = f"trying most recent placement"
-  syslog('Unable to match remote cgroup, trying most recent job placement..')
+  syslog("Failed to match remote cgroup..")
 
   # jobs is a map of { "<jobid>": <start time> } for user
   jobs = scan_jobs(user)
-  # reduce the jobs list to the job that most recently started
-  job = reduce(lambda x, y: x if jobs[x] > jobs [y] else y, jobs)
-  if job:
-    place_pid(parent.pid, f"/torque/{job}")
-  else:
-    syslog('Unable to find a torque cgroup, will place in root.')
-    place_pid(parent.pid, '/')
+  if jobs:
+    # reduce the jobs list to the job that most recently started
+    job = reduce(lambda x, y: x if jobs[x] > jobs [y] else y, jobs)
+    if job:
+      place_pid(parent.pid, f"/torque/{job}")
+      sys.exit(0)
+  
+  syslog('Unable to find a torque cgroup, will place in root!')
+  place_pid(parent.pid, "/")
 
 except Exception as e:
-  syslog(f"Exception: {str(e)}")
+  syslog(str(e))
   if parent:
     syslog('An exception occured, placing in root.')
     place_pid(parent.pid, '/')
