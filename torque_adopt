@@ -112,8 +112,6 @@ try:
     pass
   
   syslog("Failed to place in user's most recent job..")
-  
-  syslog('Unable to find a torque cgroup, will place in root!')
   place_pid(parent.pid, "/")
 
 except Exception as e:
