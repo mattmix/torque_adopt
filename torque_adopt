@@ -38,7 +38,7 @@ def scan_jobs(user):
       jobs[jobid] = int(start)
   return jobs
 
-def match_remote_cgroup(host):
+def match_remote_cgroup(host, local, remote):
   try:
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect( (host, 411) )
@@ -90,13 +90,10 @@ try:
   local  = f"{local_ip}:{local_port}"
   remote = f"{remote_ip}:{remote_port}"
 
-
   try:
-    match_remote_cgroup(remote_ip)
+    match_remote_cgroup(remote_ip, local, remote)
   except:
-    pass
-
-  syslog("Failed to match remote cgroup..")
+    syslog("Failed to match remote cgroup..")
 
   # jobs is a map of { "<jobid>": <start time> } for user
   jobs = scan_jobs(user)
