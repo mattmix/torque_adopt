@@ -53,7 +53,6 @@ def match_remote_cgroup(host, local, remote):
     return
 
   for line in payload.decode('utf-8').splitlines():
-    print(line)
     r_local, r_remote, r_user, r_cgroup = line.split()
     if user == r_user and r_remote == local and r_local == remote:
       if r_cgroup.startswith("/torque"):
