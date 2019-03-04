@@ -13,16 +13,23 @@ from syslog import openlog, syslog, LOG_AUTHPRIV
 
 JOBS_PATH = '/var/spool/torque/mom_priv/jobs/'
 
+
 def timeout(*args):
   syslog(f"Timed out.")
-  sys.exit(0)
+  os._exit(0)
 
 def place_pid(pid, cgroup):
   syslog(f"Placing pid {pid} in cgroup {cgroup}")
 
-  for subsys in ['memory', 'cpuset', 'devices', 'cpuacct']:
-    with open(f"/sys/fs/cgroup/{subsys}{cgroup}/tasks", 'a') as f:
-      f.write(f"{pid}\n")
+  try:
+    for subsys in ['memory', 'cpuset', 'devices', 'cpuacct']:
+      with open(f"/sys/fs/cgroup/{subsys}{cgroup}/tasks", 'a') as f:
+        f.write(f"{pid}\n")
+  except Exception as e:
+    syslog("Failed to place in cgroup!")
+    syslog(str(e))
+
+  os._exit(0)
 
 def scan_jobs(user):
   jobs = {}
@@ -58,7 +65,6 @@ def match_remote_cgroup(host, local, remote):
       if r_cgroup.startswith("/torque"):
         syslog(f"Found matching remote torque cgroup: {r_cgroup}")
         place_pid(parent.pid, r_cgroup)
-        sys.exit(0)
 
 def place_in_recent_job(user):
   # jobs is a map of { "<jobid>": <start time> } for user
@@ -68,7 +74,6 @@ def place_in_recent_job(user):
     job = reduce(lambda x, y: x if jobs[x] > jobs [y] else y, jobs)
     if job:
       place_pid(parent.pid, f"/torque/{job}")
-      sys.exit(0)
 
 try:
   openlog('torque_adopt', facility=LOG_AUTHPRIV)
@@ -84,11 +89,11 @@ try:
   user = os.environ['PAM_USER']
 
   if user == "root":
-    sys.exit(0)  
+    os._exit(0)  
   if os.environ['PAM_SERVICE'] != "sshd":
-    sys.exit(0)
+    os._exit(0)
   if os.environ['PAM_TYPE'] != "open_session":
-    sys.exit(0)
+    os._exit(0)
  
 
   # Our parent is a root sshd forked to just handle this session
