@@ -13,9 +13,13 @@ def get_cgroup(pid):
 try:
   connections = []
   for proc in psutil.process_iter():
-    for c in proc.connections('tcp'):
-      if c.status == 'ESTABLISHED' and c.raddr[1] == 22:
-        connections.append(f"{c.laddr[0]}:{c.laddr[1]} {c.raddr[0]}:{c.raddr[1]} {proc.username()} {get_cgroup(proc.pid)}")
+    try:
+      for c in proc.connections('tcp'):
+        if c.status == 'ESTABLISHED' and c.raddr[1] == 22:
+          connections.append(f"{c.laddr[0]}:{c.laddr[1]} {c.raddr[0]}:{c.raddr[1]} {proc.username()} {get_cgroup(proc.pid)}")
+    except psutil.NoSuchProcess:
+      pass
+
 
   ctx = pymunge.MungeContext()
   ctx.uid_restriction = 0
