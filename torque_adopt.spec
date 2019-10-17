@@ -9,7 +9,7 @@ Source0:        https://github.com/mattmix/torque_adopt
 BuildArch:      noarch
 BuildRoot:      %{_builddir}/%{name}-root
 
-Requires:       python36
+Requires:       python3
 Requires:       pam_script
 
 
