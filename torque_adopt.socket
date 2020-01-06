@@ -2,6 +2,7 @@
 Description=Torque Adopt Socket
 
 [Socket]
+MaxConnections=4096
 ListenStream=411
 Accept=yes
 
